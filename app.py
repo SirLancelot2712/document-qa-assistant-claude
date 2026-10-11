@@ -9,8 +9,14 @@ st.caption("Upload PDF/TXT/MD files and ask questions. Answers are grounded in y
 
 with st.sidebar:
     st.header("Setup")
-    api_key = st.text_input("Anthropic API key", type="password",
-                            help="Used only for this session. Or set ANTHROPIC_API_KEY in your environment.")
+    provider = st.selectbox("Answer engine", qa.PROVIDERS)
+    api_key = None
+    if provider.startswith("Gemini"):
+        api_key = st.text_input("Gemini API key (free)", type="password",
+                                help="Get one free at aistudio.google.com/apikey. Used only for this session.")
+    elif provider == "Claude":
+        api_key = st.text_input("Anthropic API key", type="password",
+                                help="Used only for this session. Or set ANTHROPIC_API_KEY in your environment.")
     files = st.file_uploader("Documents", type=["pdf", "txt", "md"], accept_multiple_files=True)
     top_k = st.slider("Excerpts sent to Claude", 2, 8, 4)
 
@@ -45,7 +51,7 @@ if question:
         with st.spinner("Thinking..."):
             ctx = qa.retrieve(question, chunks, k=top_k)
             try:
-                answer = qa.ask(question, ctx, api_key=api_key or None)
+                answer = qa.answer(provider, question, ctx, api_key=api_key or None)
             except Exception as exc:
                 st.error(f"Could not get an answer: {exc}")
                 st.stop()

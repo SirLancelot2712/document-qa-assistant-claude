@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import os
 import re
+import urllib.error
+import urllib.request
 from collections import Counter
 from dataclasses import dataclass
 
 DEFAULT_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5-5")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "is", "are", "was", "for", "on", "with",
          "that", "this", "it", "as", "by", "be", "at", "from", "what", "which", "who", "how", "do",
@@ -111,3 +115,55 @@ def ask(question: str, context: list[Chunk], api_key: str | None = None, model: 
         messages=[{"role": "user", "content": build_prompt(question, context)}],
     )
     return "".join(block.text for block in msg.content if block.type == "text")
+
+
+def ask_gemini(question: str, context: list[Chunk], api_key: str | None = None,
+               model: str = GEMINI_MODEL) -> str:
+    """Answer with Google's Gemini API (free tier available). Plain HTTPS, no extra SDK."""
+    key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("No Gemini API key. Get a free one at aistudio.google.com/apikey.")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    body = {
+        "systemInstruction": {"parts": [{"text": SYSTEM}]},
+        "contents": [{"role": "user", "parts": [{"text": build_prompt(question, context)}]}],
+        "generationConfig": {"maxOutputTokens": 800, "temperature": 0.2},
+    }
+    req = urllib.request.Request(
+        url, data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-goog-api-key": key},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            raise RuntimeError("Gemini free-tier rate limit reached. Wait a minute and try again.") from None
+        if exc.code in (400, 403):
+            raise RuntimeError("Gemini rejected the request. Check that your API key is valid.") from None
+        raise RuntimeError(f"Gemini API error (HTTP {exc.code}).") from None
+    parts = (data.get("candidates") or [{}])[0].get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        raise RuntimeError("Gemini returned no answer (the response may have been blocked).")
+    return text
+
+
+def extractive_answer(question: str, context: list[Chunk]) -> str:
+    """No-key fallback: show the passages most relevant to the question."""
+    lines = ["_No AI key set, so here are the most relevant passages from your documents:_", ""]
+    for i, c in enumerate(context, 1):
+        snippet = c.text if len(c.text) <= 400 else c.text[:400].rsplit(" ", 1)[0] + "…"
+        lines.append(f"**[{i}] {c.source}**  \n{snippet}\n")
+    return "\n".join(lines)
+
+
+PROVIDERS = ("Gemini (free tier)", "Claude", "No key (show passages)")
+
+
+def answer(provider: str, question: str, context: list[Chunk], api_key: str | None = None) -> str:
+    if provider.startswith("Gemini"):
+        return ask_gemini(question, context, api_key=api_key)
+    if provider == "Claude":
+        return ask(question, context, api_key=api_key)
+    return extractive_answer(question, context)

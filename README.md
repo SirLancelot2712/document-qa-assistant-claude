@@ -8,11 +8,20 @@ Ask questions about your own documents (PDF, TXT, Markdown) and get answers that
 3. Only those passages go to Claude, which answers strictly from them and cites `[1]`, `[2]`, ...
 4. If the answer isn't in the documents, it says so instead of guessing.
 
+## Answer engines
+
+| Engine | Cost | Key |
+|---|---|---|
+| **Gemini (free tier)** | Free, rate-limited | Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Claude** | Pay-as-you-go | [console.anthropic.com](https://console.anthropic.com) |
+| **No key** | Free | Shows the most relevant passages instead of a written answer |
+
+Paste a key in the sidebar (kept only for the session), or set `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`.
+
 ## Run it
 
 ```bash
 pip install -r requirements.txt
-set ANTHROPIC_API_KEY=your-key      # Windows (or paste the key in the app sidebar)
 streamlit run app.py
 ```
 
